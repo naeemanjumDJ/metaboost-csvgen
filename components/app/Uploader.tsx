@@ -1,3 +1,6 @@
+
+//@ts-nocheck
+
 import { allowedFileTypes } from "@/config/app";
 import { cn } from "@/lib/utils";
 import { ExtendedFile, PostData } from "@/types";

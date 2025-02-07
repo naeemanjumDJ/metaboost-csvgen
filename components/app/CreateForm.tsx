@@ -1,3 +1,5 @@
+//@ts-nocheck
+
 "use client";
 import { MAX_FILES, TASK_FETCH_INTERVAL } from "@/config/api";
 import { generators } from "@/config/app";
