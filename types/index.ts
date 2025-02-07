@@ -26,17 +26,17 @@ export interface Generator {
   comingSoon: boolean;
 }
 
-export type ExtendedFile = {
+export interface ExtendedFile {
   id: string;
-  url?: string;
+  file: File;
   filename: string;
   title: string;
   size: number;
   type: string;
   thumbnail: string;
-  file: File;
-  metadata: FileMetadata;
-};
+  url?: string;
+  metadata: any | null;
+}
 
 export type FileMetadata = {
   Title: string;
@@ -49,9 +49,9 @@ export type FileMetadata = {
   Model?: string;
 };
 
-export type PostData = {
+export interface PostData {
   generatorId: number;
   numKeywords: number;
   titleChars: number;
   files: ExtendedFile[];
-};
+}

@@ -79,21 +79,22 @@ const FileMetadata = ({
       className="group relative flex flex-col items-start gap-4 rounded-lg bg-gray-50 p-4 shadow-sm transition-all duration-300 hover:shadow-md md:flex-row md:items-center"
     >
       <Image
-        src={file.url ? file.url : file.thumbnail}
+        src={file.url ?? file.thumbnail}
         alt={file.title}
         width={200}
         height={200}
-        className={cn(
-          "rounded-lg object-cover shadow-sm",
-          file.metadata.status ? "h-32 w-full md:w-32" : "h-16 w-full md:w-16",
-        )}
+        className="h-20 w-20 rounded-lg object-cover"
       />
       <div className="w-full flex-grow space-y-2 2xl:pr-20">
         {file.metadata?.status === null ? (
           <span className="block text-sm font-medium text-gray-700">
             Processing...
           </span>
-        ) : file.metadata?.status ? (
+        ) : file.metadata?.status === false ? (
+          <span className="block text-sm font-medium text-red-500">
+            Error processing file
+          </span>
+        ) : (
           <>
             {(file.metadata?.Title ||
               file.metadata?.["Image Name"] ||
@@ -150,10 +151,6 @@ const FileMetadata = ({
               </div>
             )}
           </>
-        ) : (
-          <span className="block text-sm font-medium text-red-500">
-            Error processing file
-          </span>
         )}
       </div>
       <div className="absolute right-4 top-4 flex gap-2">

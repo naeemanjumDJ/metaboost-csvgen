@@ -13,6 +13,20 @@ import FileMetadata from "./FileMetadataPreview";
 import Generators from "./Generators";
 import Uploader from "./Uploader";
 
+// Add this interface near the top of the file
+interface BatchRequestData {
+  generatorId: number;
+  numKeywords: number;
+  titleChars: number;
+  files: {
+    id: string;
+    filename: string;
+    title: string;
+    base64?: string;
+  }[];
+  taskId?: string;
+}
+
 const CreateForm = () => {
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user);
@@ -55,85 +69,107 @@ const CreateForm = () => {
     setIsGenerating(true);
     setCurrentStep(3);
 
-    // Convert files to base64 if using vision
-    const files = await Promise.all(
-      postData.files.map(async (file) => {
-        if (user.data?.useAiVision) {
-          const base64 = await fileToBase64(file.file);
-          return {
-            id: file.id,
-            filename: file.filename,
-            title: file.title,
-            base64: base64,
-          };
-        }
-        return {
-          id: file.id,
-          filename: file.filename,
-          title: file.title,
-        };
-      })
-    );
+    try {
+      let taskId: string | undefined;
+      const BATCH_SIZE = 3;
+      const batches = [];
+      
+      // Create batches
+      for (let i = 0; i < postData.files.length; i += BATCH_SIZE) {
+        batches.push(postData.files.slice(i, i + BATCH_SIZE));
+      }
 
-    const data = {
-      generatorId: postData.generatorId,
-      numKeywords: postData.numKeywords,
-      titleChars: postData.titleChars,
-      files,
-    };
-
-    const res = await apiCall("POST", "/api/generate", data);
-    if (res && res.success) {
+      // Initialize progress
       setProgress({
         total: postData.files.length,
         processed: 0,
         success: 0,
         error: 0,
       });
-      setTimeout(() => checkTaskStatus(res.taskId), TASK_FETCH_INTERVAL);
-    } else {
-      setIsGenerating(false);
-      setCurrentStep(2);
-    }
-  };
 
-  const checkTaskStatus = async (taskId: string): Promise<void> => {
-    const data = await apiCall("GET", `/api/task?taskId=${taskId}`);
-    if (data.success) {
-      const { status, progress, result } = data.task as any;
-      setProgress((prev) => ({
-        ...prev,
-        processed: progress,
-      }));
-      if (result) {
-        setPostData((prev) => {
-          return {
-            ...prev,
-            files: prev.files.map((file) => {
-              const match = result.find((r: any) => r.id === file.id);
-              if (match) {
-                const metadata = match.metadata;
-                return {
-                  ...file,
-                  metadata,
-                };
+      // Process batches sequentially
+      for (const batch of batches) {
+        const files = await Promise.all(
+          batch.map(async (file) => {
+            if (user.data?.useAiVision) {
+              const base64 = await fileToBase64(file.file);
+              return {
+                id: file.id,
+                filename: file.filename,
+                title: file.title,
+                base64: base64,
+              };
+            }
+            return {
+              id: file.id,
+              filename: file.filename,
+              title: file.title,
+            };
+          })
+        );
+
+        const data: BatchRequestData = {
+          generatorId: postData.generatorId,
+          numKeywords: postData.numKeywords,
+          titleChars: postData.titleChars,
+          files,
+          taskId, // Pass previous taskId for subsequent batches
+        };
+
+        const res = await apiCall("POST", "/api/generate", data);
+        if (!res || !res.success) {
+          throw new Error("Failed to process batch");
+        }
+
+        taskId = res.taskId;
+        
+        // Wait for this batch to complete before processing next batch
+        await new Promise<void>((resolve) => {
+          const checkBatchStatus = async () => {
+            const statusData = await apiCall("GET", `/api/task?taskId=${taskId}`);
+            if (statusData.success) {
+              const { status, result } = statusData.task;
+              
+              if (status === "COMPLETED") {
+                // Update file metadata for this batch
+                setPostData((prev) => ({
+                  ...prev,
+                  files: prev.files.map((file) => {
+                    const matchingResult = result?.find((r: any) => r.id === file.id);
+                    if (matchingResult) {
+                      return {
+                        ...file,
+                        metadata: {
+                          ...matchingResult.metadata,
+                          status: matchingResult.metadata.status ?? true
+                        }
+                      };
+                    }
+                    return file;
+                  })
+                }));
+                resolve();
+              } else if (status === "FAILED") {
+                throw new Error("Batch processing failed");
+              } else {
+                setTimeout(checkBatchStatus, TASK_FETCH_INTERVAL);
               }
-
-              return file;
-            }),
+            }
           };
+          checkBatchStatus();
         });
       }
-      if (status === "COMPLETED") {
-        setCompleted(true);
-        setIsGenerating(false);
-        dispatch(updateUserData());
-        toast.success("Processing completed");
-      } else if (status === "FAILED") {
-        toast.error("Task processing failed");
-      } else {
-        setTimeout(() => checkTaskStatus(taskId), TASK_FETCH_INTERVAL);
-      }
+
+      setCompleted(true);
+      setIsGenerating(false);
+      dispatch(updateUserData());
+      toast.success("All files processed successfully");
+
+    } catch (error) {
+      console.error("Error processing files:", error);
+      toast.error("Failed to process files");
+      setIsGenerating(false);
+      setCurrentStep(2);
     }
   };
 

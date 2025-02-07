@@ -40,29 +40,36 @@ const Uploader = ({ postData, setPostData }: UploaderProps) => {
     for (const file of files) {
       setCurrent((prev) => prev + 1);
       const id = Math.random().toString(36).substr(2, 9);
-      // const thumbnail = await generateThumbnail(file);
-      setPostData((prevData) => {
-        return {
-          ...prevData,
-          files: [
-            ...prevData.files,
-            {
-              id,
-              filename: file.name,
-              title: file.name.split(".")[0],
-              size: file.size,
-              type: file.type,
-              thumbnail: "/images/place.jpg",
-              file,
-              metadata: {
-                Title: "",
-                status: null,
-                Keywords: [],
-              },
-            },
-          ],
+      
+      const options = {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+        initialQuality: 0.7
+      };
+
+      try {
+        const compressedFile = await imageCompression(file, options);
+        const thumbnail = await generateThumbnail(file);
+        
+        const newFile: ExtendedFile = {
+          id,
+          file: compressedFile,
+          filename: file.name,
+          title: file.name,
+          size: compressedFile.size,
+          type: compressedFile.type,
+          thumbnail,
+          metadata: { status: null } // Initialize with null status
         };
-      });
+        
+        setPostData((prevData) => ({
+          ...prevData,
+          files: [...prevData.files, newFile],
+        }));
+      } catch (error) {
+        console.error(`Error processing file ${file.name}:`, error);
+      }
     }
     setProcessing(false);
     setCurrent(0);
