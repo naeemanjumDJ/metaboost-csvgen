@@ -1,0 +1,250 @@
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPERADMIN
+}
+
+enum AiApi {
+  OPENAI
+  GEMINI
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  name               String?
+  email              String?             @unique
+  emailVerified      DateTime?           @map("email_verified")
+  image              String?
+  role               Role                @default(USER)
+  openAiApiKey       String?
+  geminiApiKey       String?
+  useAiVision        Boolean             @default(false)
+  preferredApi       AiApi?              @default(OPENAI)
+  accounts           Account[]
+  sessions           Session[]
+  credits            Credits?
+  creditTransactions CreditTransaction[]
+  Transaction        Transaction[]
+  tasks              Task[]
+  Feedback           Feedback[]
+  Upvote             Upvote[]
+  Comment            Comment[]
+  Escrow             Escrow[]
+
+  @@map("users")
+}
+
+model Credits {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance   Int      @default(0)
+  spent     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("credits")
+}
+
+model Escrow {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  amount    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("escrows")
+}
+
+enum TransactionType {
+  PURCHASE
+  USAGE
+  REFUND
+  REWARD
+}
+
+model CreditTransaction {
+  id            String          @id @default(cuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Int
+  type          TransactionType
+  createdAt     DateTime        @default(now())
+  transactionId String? // New field to link to Transaction
+  transaction   Transaction?    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("credit_transactions")
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TransactionCurrency {
+  PKR
+  USD
+}
+
+model Transaction {
+  id                 String              @id @default(cuid())
+  userId             String
+  user               User                @relation(fields: [userId], references: [id])
+  amount             Float
+  currency           TransactionCurrency
+  status             TransactionStatus   @default(PENDING)
+  paymentMethod      String?
+  paypalOrderId      String?
+  creditAmount       Int
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  creditTransactions CreditTransaction[]
+
+  @@map("transactions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+enum TaskStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  status      TaskStatus @default(PROCESSING)
+  progress    Int        @default(0)
+  totalFiles  Int
+  generator   String
+  creditsUsed Int
+  result      Json?
+  ourKey      Boolean    @default(true)
+  useVision   Boolean    @default(false)
+  userId      String     @map("user_id")
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  Escrow      Escrow[]
+
+  @@map("tasks")
+}
+
+enum FeedbackStatus {
+  UNDER_REVIEW
+  PLANNED
+  IN_DEVELOPMENT
+  SHIPPED
+}
+
+enum FeedbackType {
+  IMPROVEMENT
+  INTEGRATION
+  STYLING
+  MISC
+  FEATURE
+  BUG
+}
+
+model Feedback {
+  id          String         @id @default(cuid())
+  title       String
+  description String?        @db.Text
+  types       FeedbackType[] @default([])
+  status      FeedbackStatus @default(UNDER_REVIEW)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  upvotes  Upvote[]
+  comments Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("feedbacks")
+}
+
+model Upvote {
+  id         String   @id @default(cuid())
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  feedbackId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  createdAt  DateTime @default(now())
+
+  @@unique([feedbackId, userId])
+  @@map("upvotes")
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  content    String   @db.Text
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  feedbackId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("comments")
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
